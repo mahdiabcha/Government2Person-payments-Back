@@ -127,15 +127,36 @@ public List<Map<String,Object>> my(@RequestHeader HttpHeaders headers){
 
 
   // ---------- Beneficiaries (admin) ----------
-  @GetMapping("/programs/{programId}/beneficiaries")
-  public List<BeneficiaryItem> beneficiaries(@RequestHeader HttpHeaders headers, @PathVariable long programId,
-                                             @RequestParam(value="status",required=false) String status) {
-    if (!SecurityHelpers.hasRole(headers,"ADMIN")) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ADMIN only");
-    List<Enrollment.Status> filter = status!=null? List.of(Enrollment.Status.valueOf(status.toUpperCase())) : null;
-    var list = filter==null? repo.findByProgramIdOrderByCreatedAtDesc(programId)
-                           : repo.findByProgramIdAndStatusOrderByCreatedAtDesc(programId, filter.get(0));
-    return list.stream().map(e -> new BeneficiaryItem(e.getId(), e.getProgramId(), e.getCitizenUsername(), e.getStatus().name(), e.getEligibilityReason(), e.getCreatedAt())).toList();
+// ---------- Beneficiaries (admin) ----------
+@GetMapping("/programs/{programId}/beneficiaries")
+public List<BeneficiaryItem> beneficiaries(@RequestHeader HttpHeaders headers,
+                                           @PathVariable long programId,
+                                           @RequestParam(value="status", required=false) String status) {
+  if (!SecurityHelpers.hasRole(headers,"ADMIN"))
+    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ADMIN only");
+
+  List<Enrollment.Status> filter = null;
+  if (status != null && !status.isBlank()) {
+    try { filter = List.of(Enrollment.Status.valueOf(status.trim().toUpperCase())); }
+    catch (Exception ignored) { return List.of(); }
   }
+
+  var list = (filter == null)
+      ? repo.findByProgramIdOrderByCreatedAtDesc(programId)
+      : repo.findByProgramIdAndStatusOrderByCreatedAtDesc(programId, filter.get(0));
+
+  return list.stream()
+      .map(e -> new BeneficiaryItem(
+          e.getId(),
+          e.getProgramId(),
+          e.getCitizenUsername(),      // <-- always provides 'username' to the UI
+          e.getStatus().name(),
+          e.getEligibilityReason(),
+          e.getCreatedAt()
+      ))
+      .toList();
+}
+
 
   // ---------- Approve / Reject ----------
   @PatchMapping("/enrollments/{id}/approve")

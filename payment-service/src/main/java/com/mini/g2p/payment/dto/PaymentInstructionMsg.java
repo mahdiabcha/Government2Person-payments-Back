@@ -1,3 +1,4 @@
+
 package com.mini.g2p.payment.dto;
 
 public record PaymentInstructionMsg(

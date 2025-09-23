@@ -46,10 +46,10 @@ public class EntitlementController {
                                     @RequestBody GenerateReq req) {
     var c = cycles.findById(cycleId).orElseThrow();
     if (!Objects.equals(c.getProgramId(), programId)) {
-      throw new IllegalStateException("cycle.programId mismatch");
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Cycle does not belong to the given program");
     }
     if (entRepo.countByCycleId(cycleId) > 0) {
-      throw new IllegalStateException("entitlements already exist");
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Entitlements already generated for this cycle");
     }
 
     List<Entitlement> out = new ArrayList<>();

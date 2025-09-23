@@ -1,4 +1,3 @@
-
 package com.mini.g2p.profile.web;
 
 import com.mini.g2p.profile.domain.CitizenProfile;
@@ -7,10 +6,9 @@ import com.mini.g2p.profile.domain.ProfileDocument;
 import com.mini.g2p.profile.dto.ProfileRequest;
 import com.mini.g2p.profile.repo.CitizenProfileRepository;
 import com.mini.g2p.profile.repo.ProfileDocumentRepository;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.*;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -23,237 +21,265 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
+@RequiredArgsConstructor
+@Slf4j
 public class ProfileController {
 
   private final CitizenProfileRepository profiles;
   private final ProfileDocumentRepository docs;
 
-  public ProfileController(CitizenProfileRepository profiles,
-                           ProfileDocumentRepository docs) {
-    this.profiles = profiles;
-    this.docs = docs;
-  }
-
-  /* ---------------------------
+  /* =========================
      Helpers
-  ---------------------------- */
+     ========================= */
+private static String sanitize(String s) {
+  if (s == null || s.isBlank()) return "document";
 
-  private static String sanitize(String s) {
-    if (s == null) return "document";
-    // keep a simple, safe filename
-    return s.replaceAll("[\\r\\n\\\\/\\t\\0]", "_").trim();
+  // Build a safe filename by hand (no regex). Replace control chars and invalid filename chars.
+  String invalid = "\\/:*?\"<>|"; // Windows-invalid + path separators
+  StringBuilder sb = new StringBuilder(s.length());
+  for (int i = 0; i < s.length(); i++) {
+    char c = s.charAt(i);
+    if (c <= 31 || c == 127 || invalid.indexOf(c) >= 0) {
+      sb.append('_');
+    } else {
+      sb.append(c);
+    }
   }
 
-  private static String contentDispositionAttachment(String filename) {
-    String safe = sanitize(filename).replace("\"", "");
+  // Trim, collapse underscores, and ensure not blank
+  String safe = sb.toString().trim().replaceAll("_+", "_");
+  if (safe.isBlank()) safe = "document";
+  return safe;
+}
+
+
+
+  private static String contentDisposition(String filename, boolean inline) {
+    String safe = sanitize(filename);
     String encoded = URLEncoder.encode(safe, StandardCharsets.UTF_8).replace("+", "%20");
-    // RFC 5987: send both for broad compatibility
-    return "attachment; filename=\"" + safe + "\"; filename*=UTF-8''" + encoded;
+    String type = inline ? "inline" : "attachment";
+    return type + "; filename=\"" + safe + "\"; filename*=UTF-8''" + encoded;
   }
 
   private static String requireUser(HttpHeaders headers) {
-    String user = SecurityHelpers.currentUser(headers);
-    if (user == null || user.isBlank()) {
-      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "no user");
+    String u = SecurityHelpers.currentUser(headers);
+    if (u == null || u.isBlank()) {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
     }
-    return user;
+    return u;
   }
 
-  /* ---------------------------
-     Profile: read & update
-  ---------------------------- */
+  private static void requireAdmin(HttpHeaders headers) {
+    if (!SecurityHelpers.hasRole(headers, "ADMIN")) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ADMIN only");
+    }
+  }
+
+  private static Map<String, Object> toDto(CitizenProfile p) {
+    Map<String, Object> dto = new LinkedHashMap<>();
+    dto.put("firstName", p.getFirstName());
+    dto.put("lastName", p.getLastName());
+    dto.put("gender", p.getGender());
+    dto.put("dateOfBirth", p.getDateOfBirth() != null ? p.getDateOfBirth().toString() : null);
+    dto.put("governorate", p.getGovernorate());
+    dto.put("district", p.getDistrict());
+    dto.put("householdSize", p.getHouseholdSize());
+    dto.put("incomeMonthly", p.getIncomeMonthly());
+    dto.put("kycVerified", p.getKycVerified());
+    dto.put("paymentMethod", p.getPaymentMethod() != null ? p.getPaymentMethod().name() : "NONE");
+    dto.put("bankName", p.getBankName());
+    dto.put("iban", p.getIban());
+    dto.put("accountHolder", p.getAccountHolder());
+    dto.put("walletProvider", p.getWalletProvider());
+    dto.put("walletNumber", p.getWalletNumber());
+    return dto;
+  }
+
+  private static void apply(ProfileRequest r, CitizenProfile p) {
+    if (r == null) return;
+    if (r.firstName != null) p.setFirstName(r.firstName);
+    if (r.lastName != null) p.setLastName(r.lastName);
+    if (r.gender != null) p.setGender(r.gender);
+    if (r.dateOfBirth != null && !r.dateOfBirth.isBlank()) {
+      try { p.setDateOfBirth(LocalDate.parse(r.dateOfBirth.trim())); }
+      catch (Exception e) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid dateOfBirth (expected yyyy-MM-dd)"); }
+    }
+    if (r.governorate != null) p.setGovernorate(r.governorate);
+    if (r.district != null) p.setDistrict(r.district);
+    if (r.householdSize != null) p.setHouseholdSize(r.householdSize);
+    if (r.incomeMonthly != null) p.setIncomeMonthly(r.incomeMonthly);
+    if (r.kycVerified != null) p.setKycVerified(r.kycVerified);
+    if (r.paymentMethod != null) {
+      String pm = r.paymentMethod.trim().toUpperCase(Locale.ROOT);
+      try { p.setPaymentMethod(PaymentMethod.valueOf(pm)); }
+      catch (Exception ignored) { p.setPaymentMethod(PaymentMethod.NONE); }
+    }
+    if (r.bankName != null) p.setBankName(r.bankName);
+    if (r.iban != null) p.setIban(r.iban);
+    if (r.accountHolder != null) p.setAccountHolder(r.accountHolder);
+    if (r.walletProvider != null) p.setWalletProvider(r.walletProvider);
+    if (r.walletNumber != null) p.setWalletNumber(r.walletNumber);
+  }
+
+  /* =========================
+     Self profile
+     ========================= */
 
   @GetMapping("/profiles/me")
-  public Map<String, Object> me(@RequestHeader HttpHeaders headers) {
-    String user = requireUser(headers);
-
-    var p = profiles.findByUsername(user).orElseGet(() -> {
-      var np = new CitizenProfile();
-      np.setUsername(user);
-      return profiles.save(np);
-    });
-
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("username", p.getUsername());
-    m.put("firstName", p.getFirstName());
-    m.put("lastName", p.getLastName());
-    m.put("gender", p.getGender());
-    m.put("dateOfBirth", p.getDateOfBirth());
-    m.put("governorate", p.getGovernorate());
-    m.put("district", p.getDistrict());
-    m.put("householdSize", p.getHouseholdSize());
-    m.put("incomeMonthly", p.getIncomeMonthly());
-    m.put("kycVerified", p.getKycVerified());
-    m.put("paymentMethod", p.getPaymentMethod() != null ? p.getPaymentMethod().name() : "NONE");
-    m.put("bankName", p.getBankName());
-    m.put("iban", p.getIban());
-    m.put("accountHolder", p.getAccountHolder());
-    m.put("walletProvider", p.getWalletProvider());
-    m.put("walletNumber", p.getWalletNumber());
-    return m;
+  public ResponseEntity<Map<String, Object>> me(@RequestHeader HttpHeaders headers) {
+    String u = requireUser(headers);
+    return profiles.findByUsername(u)
+        .map(p -> ResponseEntity.ok(toDto(p)))
+        .orElseGet(() -> ResponseEntity.ok(Collections.emptyMap()));
   }
 
   @PostMapping("/profiles/me")
-  public ResponseEntity<?> update(@RequestHeader HttpHeaders headers,
-                                  @RequestBody ProfileRequest req) {
-    String user = requireUser(headers);
-
-    var p = profiles.findByUsername(user).orElseGet(() -> {
-      var np = new CitizenProfile();
-      np.setUsername(user);
-      return profiles.save(np);
+  @Transactional
+  public ResponseEntity<Map<String, Object>> save(@RequestHeader HttpHeaders headers, @RequestBody ProfileRequest body) {
+    String u = requireUser(headers);
+    CitizenProfile p = profiles.findByUsername(u).orElseGet(() -> {
+      CitizenProfile np = new CitizenProfile();
+      np.setUsername(u);
+      np.setPaymentMethod(PaymentMethod.NONE);
+      return np;
     });
-
-    p.setFirstName(req.firstName);
-    p.setLastName(req.lastName);
-    if (req.gender != null) p.setGender(req.gender);
-    if (req.dateOfBirth != null && !req.dateOfBirth.isBlank()) {
-      p.setDateOfBirth(LocalDate.parse(req.dateOfBirth));
-    }
-    p.setGovernorate(req.governorate);
-    p.setDistrict(req.district);
-    p.setHouseholdSize(req.householdSize);
-    p.setIncomeMonthly(req.incomeMonthly);
-    p.setKycVerified(req.kycVerified);
-
-    if (req.paymentMethod != null) {
-      try {
-        p.setPaymentMethod(PaymentMethod.valueOf(req.paymentMethod.toUpperCase(Locale.ROOT)));
-      } catch (IllegalArgumentException ex) {
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid paymentMethod");
-      }
-    }
-    p.setBankName(req.bankName);
-    p.setIban(req.iban);
-    p.setAccountHolder(req.accountHolder);
-    p.setWalletProvider(req.walletProvider);
-    p.setWalletNumber(req.walletNumber);
-
+    apply(body, p);
     profiles.save(p);
-    return ResponseEntity.ok(Map.of("ok", true));
+    return ResponseEntity.ok(toDto(p));
   }
 
-  /* ---------------------------
-     Documents: upload
-     (matches your working call)
-     POST /profiles/me/documents?type=ID
-     -F "file=@path"
-  ---------------------------- */
+  /* =========================
+     Self documents
+     ========================= */
 
-  @PostMapping(path = "/profiles/me/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  public Map<String, Object> upload(@RequestHeader HttpHeaders headers,
-                                    @RequestParam(value = "type", required = false) String type,
-                                    @RequestParam("file") MultipartFile file) {
-    String user = requireUser(headers);
-
-    if (file == null || file.isEmpty()) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "empty file");
-    }
-
-    try {
-      var d = new ProfileDocument();
-      d.setOwnerUsername(user);
-      d.setType(type != null ? type : "OTHER");
-      d.setFilename(sanitize(Objects.requireNonNullElse(file.getOriginalFilename(), "document")));
-      d.setContentType(Objects.requireNonNullElse(file.getContentType(), MediaType.APPLICATION_OCTET_STREAM_VALUE));
-      d.setSize(file.getSize());
-      d.setData(file.getBytes());
-
-      docs.save(d);
-
-      Map<String, Object> resp = new LinkedHashMap<>();
-      resp.put("size", d.getSize());
-      resp.put("type", d.getContentType());
-      resp.put("id", d.getId());
-      return resp;
-    } catch (Exception e) {
-      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "failed to store file");
-    }
-  }
-
-  /* ---------------------------
-     Documents: list (fixes 405)
-     GET /profiles/me/documents
-     Returns lightweight metadata.
-  ---------------------------- */
-
-  public record DocMeta(Long id, String type, String filename,
-                        String contentType, Long size) {}
+  public record DocMeta(Long id, String type, String filename, String contentType, Long size, String createdAt) {}
 
   @GetMapping("/profiles/me/documents")
-  public List<DocMeta> myDocuments(@RequestHeader HttpHeaders headers) {
-    String user = requireUser(headers);
-
-    // Avoid requiring custom repo methods: filter in memory
-    return docs.findAll().stream()
-        .filter(d -> user.equals(d.getOwnerUsername()))
-        .sorted(Comparator.comparing(ProfileDocument::getId).reversed())
-        .map(d -> new DocMeta(
-            d.getId(),
-            d.getType(),
-            d.getFilename(),
-            d.getContentType(),
-            d.getSize()
-        ))
+  public List<DocMeta> myDocs(@RequestHeader HttpHeaders headers) {
+    String u = requireUser(headers);
+    return docs.findByOwnerUsernameOrderByCreatedAtDesc(u).stream()
+        .map(d -> new DocMeta(d.getId(), d.getType(), d.getFilename(), d.getContentType(), d.getSize(),
+            d.getCreatedAt()!=null? d.getCreatedAt().toString(): null))
         .collect(Collectors.toList());
   }
 
-  /* ---------------------------
-     Documents: download (binary)
-     GET /profiles/me/documents/{id}/download
-  ---------------------------- */
-
-  @Transactional(readOnly = true)
-  @GetMapping("/profiles/me/documents/{id}/download")
-  public ResponseEntity<byte[]> download(@RequestHeader HttpHeaders headers,
-                                         @PathVariable Long id) {
-    String user = requireUser(headers);
-
-    var doc = docs.findById(id)
-        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "document not found"));
-
-    if (!user.equals(doc.getOwnerUsername())) {
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "document not found");
+  @PostMapping(path = "/profiles/me/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @Transactional
+  public Map<String, Object> upload(@RequestHeader HttpHeaders headers,
+                                    @RequestParam("file") MultipartFile file,
+                                    @RequestParam(value = "type", required = false, defaultValue = "OTHER") String type) {
+    String u = requireUser(headers);
+    if (file == null || file.isEmpty()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No file provided");
     }
-
-    MediaType ct;
     try {
-      ct = doc.getContentType() != null ? MediaType.parseMediaType(doc.getContentType())
-                                        : MediaType.APPLICATION_OCTET_STREAM;
+      ProfileDocument d = new ProfileDocument();
+      d.setOwnerUsername(u);
+      d.setType(type == null ? "OTHER" : type.trim().toUpperCase(Locale.ROOT));
+      d.setContentType(Optional.ofNullable(file.getContentType()).orElse(MediaType.APPLICATION_OCTET_STREAM_VALUE));
+      d.setSize(file.getSize());
+      d.setFilename(Optional.ofNullable(file.getOriginalFilename()).map(ProfileController::sanitize).orElse("document"));
+      d.setData(file.getBytes());
+      docs.save(d);
+      return Map.of("id", d.getId(), "status", "OK");
     } catch (Exception e) {
-      ct = MediaType.APPLICATION_OCTET_STREAM;
+      log.warn("Upload failed", e);
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Upload failed");
     }
-
-    byte[] body = doc.getData();
-    if (body == null) body = new byte[0];
-
-    HttpHeaders h = new HttpHeaders();
-    h.setContentType(ct);
-    if (doc.getSize() != null) h.setContentLength(doc.getSize());
-    h.set(HttpHeaders.CONTENT_DISPOSITION, contentDispositionAttachment(
-        Optional.ofNullable(doc.getFilename()).orElse("document")
-    ));
-
-    return new ResponseEntity<>(body, h, HttpStatus.OK);
   }
 
-  /* ---------------------------
-     Documents: delete (optional)
-  ---------------------------- */
+  @GetMapping("/profiles/me/documents/{id}/download")
+  public ResponseEntity<byte[]> downloadMine(@RequestHeader HttpHeaders headers, @PathVariable Long id) {
+    String u = requireUser(headers);
+    ProfileDocument d = docs.findByIdAndOwnerUsername(id, u)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+    return ResponseEntity.ok()
+        .contentType(MediaType.parseMediaType(Optional.ofNullable(d.getContentType()).orElse(MediaType.APPLICATION_OCTET_STREAM_VALUE)))
+        .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(d.getFilename(), false))
+        .contentLength(Optional.ofNullable(d.getSize()).orElseGet(() -> d.getData()!=null ? (long)d.getData().length : 0L))
+        .body(d.getData());
+  }
 
   @DeleteMapping("/profiles/me/documents/{id}")
-  public ResponseEntity<?> delete(@RequestHeader HttpHeaders headers,
-                                  @PathVariable Long id) {
-    String user = requireUser(headers);
-
-    var doc = docs.findById(id)
-        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "document not found"));
-
-    if (!user.equals(doc.getOwnerUsername())) {
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "document not found");
-    }
-
-    docs.delete(doc);
-    return ResponseEntity.noContent().build();
+  @Transactional
+  public Map<String, Object> deleteMine(@RequestHeader HttpHeaders headers, @PathVariable Long id) {
+    String u = requireUser(headers);
+    ProfileDocument d = docs.findByIdAndOwnerUsername(id, u)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+    docs.delete(d);
+    return Map.of("status", "DELETED");
   }
+
+  /* =========================
+     Admin profile + documents (read-only)
+     ========================= */
+
+
+
+  @GetMapping({"/profiles/admin/{username:.+}", "/admin/profiles/{username:.+}"})
+  public ResponseEntity<Map<String, Object>> adminGetProfile(@RequestHeader HttpHeaders headers, @PathVariable String username) {
+    requireAdmin(headers);
+    String owner = resolveOwnerCanonical(username);
+    return profiles.findByUsernameIgnoreCase(owner)
+        .map(p -> ResponseEntity.ok(toDto(p)))                // <-- plain Profile-like map
+        .orElseGet(() -> ResponseEntity.ok(Collections.emptyMap())); // empty {} if none
+  }
+
+
+
+
+  private String resolveOwnerCanonical(String username) {
+  String u = username == null ? "" : username.trim();
+  return profiles.findByUsernameIgnoreCase(u).map(CitizenProfile::getUsername).orElse(u);
 }
+
+  @GetMapping({"/profiles/admin/{username:.+}/documents", "/admin/profiles/{username:.+}/documents"})
+  public List<DocMeta> adminListDocs(@RequestHeader HttpHeaders headers, @PathVariable String username) {
+    requireAdmin(headers);
+    String owner = resolveOwnerCanonical(username);
+    return docs.findByOwnerUsernameIgnoreCaseOrderByCreatedAtDesc(owner).stream()
+        .map(d -> new DocMeta(d.getId(), d.getType(), d.getFilename(), d.getContentType(), d.getSize(),
+            d.getCreatedAt()!=null? d.getCreatedAt().toString(): null))
+        .collect(Collectors.toList());
+  }
+
+  @GetMapping({"/profiles/admin/{username:.+}/documents/latest", "/admin/profiles/{username:.+}/documents/latest"})
+  public ResponseEntity<DocMeta> adminLatestByType(@RequestHeader HttpHeaders headers,
+                                                  @PathVariable String username,
+                                                  @RequestParam("type") String type) {
+    requireAdmin(headers);
+    String owner = resolveOwnerCanonical(username);
+    String t = type == null ? "OTHER" : type.trim().toUpperCase(Locale.ROOT);
+    return docs.findFirstByOwnerUsernameAndTypeIgnoreCaseOrderByCreatedAtDesc(owner, t)
+        .map(d -> ResponseEntity.ok(new DocMeta(d.getId(), d.getType(), d.getFilename(), d.getContentType(), d.getSize(),
+            d.getCreatedAt()!=null? d.getCreatedAt().toString(): null)))
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No document of requested type"));
+  }
+
+  @GetMapping({"/profiles/admin/{username:.+}/documents/{id}/download", "/admin/profiles/{username:.+}/documents/{id}/download"})
+  public ResponseEntity<byte[]> adminDownload(@RequestHeader HttpHeaders headers, @PathVariable String username, @PathVariable Long id) {
+    requireAdmin(headers);
+    String owner = resolveOwnerCanonical(username);
+    ProfileDocument d = docs.findByIdAndOwnerUsernameIgnoreCase(id, owner)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+    return ResponseEntity.ok()
+        .contentType(MediaType.parseMediaType(Optional.ofNullable(d.getContentType()).orElse(MediaType.APPLICATION_OCTET_STREAM_VALUE)))
+        .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(d.getFilename(), false))
+        .contentLength(Optional.ofNullable(d.getSize()).orElseGet(() -> d.getData()!=null ? (long)d.getData().length : 0L))
+        .body(d.getData());
+  }
+
+  @GetMapping({"/profiles/admin/{username:.+}/documents/{id}/inline", "/admin/profiles/{username:.+}/documents/{id}/inline"})
+  public ResponseEntity<byte[]> adminInline(@RequestHeader HttpHeaders headers, @PathVariable String username, @PathVariable Long id) {
+    requireAdmin(headers);
+    String owner = resolveOwnerCanonical(username);
+    ProfileDocument d = docs.findByIdAndOwnerUsernameIgnoreCase(id, owner)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+    return ResponseEntity.ok()
+        .contentType(MediaType.parseMediaType(Optional.ofNullable(d.getContentType()).orElse(MediaType.APPLICATION_OCTET_STREAM_VALUE)))
+        .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(d.getFilename(), true))
+        .contentLength(Optional.ofNullable(d.getSize()).orElseGet(() -> d.getData()!=null ? (long)d.getData().length : 0L))
+        .body(d.getData());
+  }
+
+  }

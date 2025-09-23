@@ -1,3 +1,4 @@
+
 package com.mini.g2p.payment.domain;
 
 import jakarta.persistence.*;

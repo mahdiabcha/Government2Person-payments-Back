@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface CitizenProfileRepository extends JpaRepository<CitizenProfile, Long> {
   Optional<CitizenProfile> findByUsername(String username);
   boolean existsByUsername(String username);
+  Optional<CitizenProfile> findByUsernameIgnoreCase(String username); // <-- add this
+
 }

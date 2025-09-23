@@ -1,57 +1,90 @@
 package com.mini.g2p.gateway.security;
 
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 import org.springframework.core.Ordered;
-import org.springframework.http.*;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.server.ServerWebExchange;
+
 import reactor.core.publisher.Mono;
-import java.nio.charset.StandardCharsets;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Component
-@org.springframework.boot.context.properties.EnableConfigurationProperties(JwtProps.class)
 public class JwtGatewayFilter implements GlobalFilter, Ordered {
 
-  private final JwtUtil jwt;
   private final JwtProps props;
+  private final JwtUtil jwt;
   private final AntPathMatcher matcher = new AntPathMatcher();
 
-  public JwtGatewayFilter(JwtUtil jwt, JwtProps props){ this.jwt=jwt; this.props=props; }
+  @Autowired
+  public JwtGatewayFilter(JwtProps props, JwtUtil jwt) {
+    this.props = props;
+    this.jwt = jwt;
+  }
+
+  @Override
+  public int getOrder() {
+    // Run early, before routing
+    return -100;
+  }
 
   @Override
   public Mono<Void> filter(ServerWebExchange exchange, org.springframework.cloud.gateway.filter.GatewayFilterChain chain) {
-    String path = exchange.getRequest().getURI().getPath();
+    var request = exchange.getRequest();
 
-    // Public paths
-    for (String p : props.getPublicPaths()) if (matcher.match(p, path)) return chain.filter(exchange);
+    // 1) Always let preflight pass (CORS)
+    if (request.getMethod() == HttpMethod.OPTIONS) {
+      return chain.filter(exchange);
+    }
 
-    // Require Authorization
-    String auth = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-    if (auth == null || !auth.startsWith("Bearer ")) return unauthorized(exchange, "Missing or invalid Authorization header");
-    String token = auth.substring(7).trim();
-    if (!jwt.isValid(token)) return unauthorized(exchange, "Invalid or expired token");
+    // 2) Allow public paths without JWT
+    final String path = request.getURI().getPath();
+    boolean isPublic = props.getPublicPaths().stream().anyMatch(p -> matcher.match(p, path));
+    if (isPublic) {
+      return chain.filter(exchange);
+    }
 
-    String user = jwt.getUsername(token);
-    Set<String> roles = jwt.getRoles(token).stream().map(r -> r.replace("ROLE_","")).collect(Collectors.toSet());
+    // 3) Require and validate JWT
+    String auth = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+    if (auth == null || !auth.startsWith("Bearer ")) {
+      return unauthorized(exchange, "Missing Bearer token");
+    }
 
-    var req = exchange.getRequest().mutate()
-        .header("X-Auth-User", user)
-        .header("X-Auth-Roles", String.join(",", roles))
+    String token = auth.substring("Bearer ".length()).trim();
+    JwtUtil.Decoded d;
+    try {
+      d = jwt.decode(token); // verifies signature & extracts sub/roles
+    } catch (Exception ex) {
+      return unauthorized(exchange, "Invalid token");
+    }
+
+    // 4) Propagate identity to downstream services
+    String rolesCsv = String.join(",", d.roles());
+    var mutated = exchange.mutate()
+        .request(builder -> builder.headers(h -> {
+          h.set("X-Auth-User", d.username());
+          h.set("X-Auth-Roles", rolesCsv);
+        }))
         .build();
 
-    return chain.filter(exchange.mutate().request(req).build());
+    ServerWebExchangeUtils.putUriTemplateVariables(mutated, ServerWebExchangeUtils.getUriTemplateVariables(exchange));
+    return chain.filter(mutated);
   }
 
-  @Override public int getOrder(){ return -100; }
-
-  private Mono<Void> unauthorized(ServerWebExchange exchange, String msg){
-    var res = exchange.getResponse();
-    res.setStatusCode(HttpStatus.UNAUTHORIZED);
-    res.getHeaders().setContentType(MediaType.APPLICATION_JSON);
-    var bytes = ("{\"error\":\"unauthorized\",\"message\":\""+msg+"\"}").getBytes(StandardCharsets.UTF_8);
-    return res.writeWith(Mono.just(res.bufferFactory().wrap(bytes)));
+  private Mono<Void> unauthorized(ServerWebExchange exchange, String message) {
+    var response = exchange.getResponse();
+    response.setStatusCode(HttpStatus.UNAUTHORIZED);
+    byte[] bytes = ("{\"error\":\"unauthorized\",\"message\":\"" + message + "\"}")
+        .getBytes(StandardCharsets.UTF_8);
+    var buffer = response.bufferFactory().wrap(bytes);
+    response.getHeaders().set(HttpHeaders.CONTENT_TYPE, "application/json");
+    return response.writeWith(Mono.just(buffer));
   }
 }

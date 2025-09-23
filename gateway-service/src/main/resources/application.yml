@@ -4,60 +4,63 @@ server:
 spring:
   application:
     name: gateway-service
+
+  codec:
+    max-in-memory-size: 50MB
+
   cloud:
     gateway:
-      # Global CORS so Angular (http://localhost:4200) can preflight + POST JSON
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials Vary
       globalcors:
         add-to-simple-url-handler-mapping: true
         corsConfigurations:
           '[/**]':
             allowedOrigins:
               - http://localhost:4200
-            allowedMethods:
-              - GET
-              - POST
-              - PUT
-              - PATCH
-              - DELETE
-              - OPTIONS
-            allowedHeaders: "*"
+            allowedMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+            allowedHeaders: [Authorization, Content-Type, X-Auth-User, X-Auth-Roles, "*"]
             allowCredentials: true
+            maxAge: 3600
+
+      httpclient:
+        max-initial-line-length: 8192
+        max-header-size: 16384
 
       routes:
-        # --- AUTH (no StripPrefix; keep /auth/** intact) ---
         - id: auth
           uri: http://auth-service:8081
           predicates:
             - Path=/auth/**
 
-        # --- ENROLLMENT (place before /programs/**) ---
         - id: enrollment-program-specific
           uri: http://enrollment-service:8084
           predicates:
-            - Path=/programs/*/eligibility/**,/programs/*/enroll,/programs/*/beneficiaries/**
+            - Path=/programs/*/eligibility/**,/programs/*/enroll,/programs/*/beneficiaries/**,/programs/*/enrollments/**
 
         - id: enrollment
           uri: http://enrollment-service:8084
           predicates:
             - Path=/enrollments/**
 
-        # --- PROFILES ---
         - id: profiles
           uri: http://profile-service:8083
           predicates:
-            - Path=/profiles/**
+            - Path=/profiles/**,/admin/profiles/**
 
-        # --- PROGRAM CATALOG ---
         - id: program-catalog
-          uri: http://program-catalog-service:8085
+          uri: http://program-catalog-service:8085   # <-- use 8082 here if that's your actual internal port
           predicates:
             - Path=/programs/**,/cycles/**,/entitlements/**
 
-        # --- PAYMENTS ---
         - id: payments
           uri: http://payment-service:8086
           predicates:
             - Path=/payments/**
+        - id: notifications
+          uri: http://notifications-service:8087
+          predicates:
+            - Path=/notifications/**
 
 management:
   endpoints:
@@ -65,7 +68,6 @@ management:
       exposure:
         include: health,info
 
-# JwtProps in your gateway expects app.jwt.publicPaths (relaxed binding accepts dash-case)
 app:
   jwt:
     secret: ${JWT_SECRET:${APP_JWT_SECRET:a6f3d8c2b7944f12a17d05c6b9f82a7d3e1f74c5a94e89b15b3f0c7e1a2d9f5c}}

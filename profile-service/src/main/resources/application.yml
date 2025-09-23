@@ -1,8 +1,11 @@
+server:
+  port: 8083
+
 spring:
   application:
     name: profile-service
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/profiledb}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/profiledb}
     username: ${SPRING_DATASOURCE_USERNAME:app}
     password: ${SPRING_DATASOURCE_PASSWORD:app}
   jpa:
@@ -17,8 +20,11 @@ spring:
           non_contextual_creation: true
   servlet:
     multipart:
-      max-file-size: 20MB
-      max-request-size: 20MB
-  web:
-    resources:
-      static-locations: file:./uploads/
+      max-file-size: 25MB
+      max-request-size: 25MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
