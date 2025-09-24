@@ -63,23 +63,22 @@ services:
       SPRING_DATASOURCE_PASSWORD: app
       PROGRAM_CATALOG_BASEURL: http://program-catalog-service:8085
       PROFILE_BASEURL: http://profile-service:8083
-
-
+      APP_NOTIFICATIONS_URL: http://notifications-service:8087
+      APP_NOTIFICATIONS_INTERNAL_KEY: a6f3d8c2b7944f12a17d05c6b9f82a7d3e1f74c5a94e89b15b3f0c7e1a2qa7o2
   notifications-service:
     build: { context: ../notifications-service }
     depends_on:
       postgres: { condition: service_healthy }
-      rabbitmq: { condition: service_healthy }
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/notifdb
       SPRING_DATASOURCE_USERNAME: app
       SPRING_DATASOURCE_PASSWORD: app
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SPRING_RABBITMQ_PORT: 5672
-      SPRING_RABBITMQ_USERNAME: app
-      SPRING_RABBITMQ_PASSWORD: app
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_JPA_OPEN_IN_VIEW: "false"
+      APP_INTERNAL_KEY: a6f3d8c2b7944f12a17d05c6b9f82a7d3e1f74c5a94e89b15b3f0c7e1a2qa7o2
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info"
+
+    ports: ["8087:8087"]
+
+
 
   program-catalog-service:
     build: { context: ../program-catalog-service }
@@ -92,6 +91,8 @@ services:
       ENROLLMENT_BASEURL: http://enrollment-service:8084
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_OPEN_IN_VIEW: "false"
+      AAPP_NOTIFICATIONS_URL: http://notifications-service:8087
+      APP_NOTIFICATIONS_INTERNAL_KEY: a6f3d8c2b7944f12a17d05c6b9f82a7d3e1f74c5a94e89b15b3f0c7e1a2qa7o2
 
 
   payment-service:
@@ -110,6 +111,8 @@ services:
       PROGRAM_CATALOG_BASEURL: http://program-catalog-service:8085
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_OPEN_IN_VIEW: "false"
+      APP_NOTIFICATIONS_URL: http://notifications-service:8087
+      APP_NOTIFICATIONS_INTERNAL_KEY: a6f3d8c2b7944f12a17d05c6b9f82a7d3e1f74c5a94e89b15b3f0c7e1a2qa7o2
 
 
   mockbank-service:
@@ -132,6 +135,7 @@ services:
       program-catalog-service: { condition: service_started }
       enrollment-service: { condition: service_started }
       payment-service: { condition: service_started }
+      notifications-service: { condition: service_started }
     environment:
       JWT_SECRET: a6f3d8c2b7944f12a17d05c6b9f82a7d3e1f74c5a94e89b15b3f0c7e1a2d9f5c
       APP_JWT_SECRET: a6f3d8c2b7944f12a17d05c6b9f82a7d3e1f74c5a94e89b15b3f0c7e1a2d9f5c

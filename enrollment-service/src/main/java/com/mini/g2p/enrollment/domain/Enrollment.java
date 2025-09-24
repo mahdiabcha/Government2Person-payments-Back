@@ -17,6 +17,7 @@ public class Enrollment {
   private Long id;
 
   private Long programId;
+  private String ProgramName; 
 
   @Column(length = 100, nullable = false)
   private String citizenUsername;
@@ -88,4 +89,9 @@ public class Enrollment {
 
   public Instant getUpdatedAt() { return updatedAt; }
   public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+  public Object getProgramName() {
+    return ProgramName ; 
+
+  }
 }
