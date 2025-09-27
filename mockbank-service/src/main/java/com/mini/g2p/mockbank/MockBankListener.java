@@ -3,28 +3,38 @@ package com.mini.g2p.mockbank;
 import org.springframework.amqp.core.AmqpTemplate;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
-import java.util.UUID;
+
+import java.math.BigDecimal;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Component
 public class MockBankListener {
   private final AmqpTemplate amqp;
   public MockBankListener(AmqpTemplate amqp){ this.amqp = amqp; }
 
-  // match payment-service DTO field names
-  public record PaymentInstructionMsg(Long instructionId, Long programId, String username, Double amount, String currency) {}
-  public record PaymentStatusMsg(Long instructionId, String status, String bankRef, String failReason) {}
+  // Must match payment-service message exactly (BigDecimal amount + username)
+  public record PaymentInstructionMsg(
+      Long instructionId,
+      Long programId,
+      String username,
+      BigDecimal amount,
+      String currency
+  ) {}
 
-  @RabbitListener(queues = RabbitConfig.Q_INSTR) // <- plural queue
-  public void onInstruction(PaymentInstructionMsg msg) throws Exception {
-    Thread.sleep(50 + (int)(Math.random() * 150));
-    boolean ok = Math.random() < 0.85;
+  @RabbitListener(queues = RabbitConfig.Q_INSTR)
+  public void onInstruction(PaymentInstructionMsg in) throws InterruptedException {
+    // Simulate processing time
+    Thread.sleep(ThreadLocalRandom.current().nextInt(50, 200));
 
-    // Correct field order: (instructionId, status, bankRef, failReason)
+    boolean ok = ThreadLocalRandom.current().nextDouble() < 0.85;
+
+    // SUCCESS → bankRef set, reason = null
+    // FAILED  → bankRef may still be set, reason populated
     var statusMsg = new PaymentStatusMsg(
-        msg.instructionId(),
+        in.instructionId(),
         ok ? "SUCCESS" : "FAILED",
-        ok ? "BNK-" + UUID.randomUUID() : null,
-        ok ? null : "INSUFFICIENT_FUNDS"
+        "BK-" + ThreadLocalRandom.current().nextInt(1_000_000),
+        ok ? null : "INSUFFICIENT_FUNDS"  // <-- publish reason on failure
     );
 
     amqp.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.RK_STATUS, statusMsg);

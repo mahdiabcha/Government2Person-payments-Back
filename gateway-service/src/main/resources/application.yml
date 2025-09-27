@@ -69,6 +69,7 @@ management:
         include: health,info
 
 app:
+
   jwt:
     secret: ${JWT_SECRET:${APP_JWT_SECRET:a6f3d8c2b7944f12a17d05c6b9f82a7d3e1f74c5a94e89b15b3f0c7e1a2d9f5c}}
     public-paths:

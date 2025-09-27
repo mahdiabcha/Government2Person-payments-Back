@@ -7,6 +7,8 @@ import com.mini.g2p.payment.amqp.RabbitConfig;
 import org.springframework.amqp.core.AmqpTemplate;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import java.math.BigDecimal;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -61,18 +63,38 @@ public class PaymentController {
     return ResponseEntity.ok(Map.of("totalCount",batch.getTotalCount(),"batchId",batch.getId()));
   }
 
+
   @PostMapping("/batches/{id}/dispatch")
   public ResponseEntity<?> dispatch(@RequestHeader HttpHeaders headers, @PathVariable Long id) {
-    if (!isAdmin(headers)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error","ADMIN only"));
+    if (!isAdmin(headers)) {
+      return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error","ADMIN only"));
+    }
+
     var b = batches.findById(id).orElseThrow();
-    b.setStatus(PaymentBatch.Status.PROCESSING); batches.save(b);
+    b.setStatus(PaymentBatch.Status.PROCESSING);
+    batches.save(b);
+
     instr.findByBatchId(id).forEach(pi -> {
+      BigDecimal amount = toBigDecimal(pi.getAmount()); // <- ensure BigDecimal for DTO
       var msg = new com.mini.g2p.payment.dto.PaymentInstructionMsg(
-          pi.getId(), b.getProgramId(), pi.getBeneficiaryUsername(), pi.getAmount(), pi.getCurrency());
+          pi.getId(),
+          b.getProgramId(),
+          pi.getBeneficiaryUsername(), // <- username
+          amount,
+          pi.getCurrency()
+      );
       amqp.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.RK_INSTR, msg);
-      pi.setStatus(PaymentInstruction.Status.SENT); instr.save(pi);
+      pi.setStatus(PaymentInstruction.Status.SENT);
+      instr.save(pi);
     });
+
     return ResponseEntity.ok(Map.of("status","DISPATCHED"));
+  }
+
+  private static BigDecimal toBigDecimal(Object v) {
+    if (v == null) return null;
+    if (v instanceof BigDecimal bd) return bd;
+    return new BigDecimal(v.toString()); // avoids binary double rounding
   }
 
   @GetMapping("/batches/{id}")
