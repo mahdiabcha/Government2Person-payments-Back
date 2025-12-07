@@ -99,14 +99,14 @@ public class ProgramController {
     return ResponseEntity.ok(p);
   }
 
-  private boolean allowed(ProgramState from, ProgramState to) {
-    return switch (from) {
-      case DRAFT -> to == ProgramState.ACTIVE || to == ProgramState.ARCHIVED;
-      case ACTIVE -> to == ProgramState.INACTIVE || to == ProgramState.ARCHIVED;
-      case INACTIVE -> to == ProgramState.ACTIVE || to == ProgramState.ARCHIVED;
-      case ARCHIVED -> false;
-    };
-  }
+    private boolean allowed(ProgramState from, ProgramState to) {
+      return switch (from) {
+        case DRAFT -> to == ProgramState.ACTIVE || to == ProgramState.ARCHIVED;
+        case ACTIVE -> to == ProgramState.INACTIVE || to == ProgramState.ARCHIVED;
+        case INACTIVE -> to == ProgramState.ACTIVE || to == ProgramState.ARCHIVED;
+        case ARCHIVED -> false;
+      };
+    }
 
   public static class ProgramUpdateDto {
     public String name;

@@ -12,7 +12,7 @@ spring:
     open-in-view: false
     properties.hibernate.jdbc.time_zone: UTC
   app:
-  notifications:
+   notifications:
     url: ${APP_NOTIFICATIONS_URL:http://notifications-service:8087}
     internal-key: ${APP_NOTIFICATIONS_INTERNAL_KEY:a6f3d8c2b7944f12a17d05c6b9f82a7d3e1f74c5a94e89b15b3f0c7e1a2qa7o2}
 

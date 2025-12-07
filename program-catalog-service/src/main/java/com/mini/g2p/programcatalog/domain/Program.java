@@ -11,6 +11,7 @@ public class Program {
   @Column(length=8000) private String rulesJson;
   @Enumerated(EnumType.STRING) @Column(name="state",nullable=false,length=20) private ProgramState state = ProgramState.DRAFT;
   @Column(updatable=false) private Instant createdAt;
+  
   @PrePersist void pre(){ if(createdAt==null) createdAt=Instant.now(); }
   // getters/setters …
   public Long getId(){return id;} public void setId(Long id){this.id=id;}

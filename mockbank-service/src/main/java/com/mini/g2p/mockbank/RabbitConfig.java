@@ -13,9 +13,7 @@ public class RabbitConfig {
   public static final String EXCHANGE = "g2p.payments";
   public static final String RK_INSTR = "payment.instruction";
   public static final String RK_STATUS = "payment.status";
-
-  // NOTE: use the same queue names as payment-service
-  public static final String Q_INSTR = "q.payment.instructions"; // plural
+  public static final String Q_INSTR = "q.payment.instructions"; 
   public static final String Q_STATUS = "q.payment.status";
 
   @Bean

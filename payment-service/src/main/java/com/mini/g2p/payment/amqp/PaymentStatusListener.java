@@ -5,7 +5,7 @@ import com.mini.g2p.payment.domain.PaymentInstruction;
 import com.mini.g2p.payment.dto.PaymentStatusMsg;
 import com.mini.g2p.payment.repo.PaymentBatchRepository;
 import com.mini.g2p.payment.repo.PaymentInstructionRepository;
-import com.mini.g2p.payment.clients.NotificationsClient; // NEW
+import com.mini.g2p.payment.clients.NotificationsClient; 
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -19,7 +19,7 @@ public class PaymentStatusListener {
 
   private final PaymentInstructionRepository instrRepo;
   private final PaymentBatchRepository batchRepo;
-  private final NotificationsClient notifications; // NEW
+  private final NotificationsClient notifications; 
 
 @Transactional
 @RabbitListener(queues = RabbitConfig.Q_STATUS)

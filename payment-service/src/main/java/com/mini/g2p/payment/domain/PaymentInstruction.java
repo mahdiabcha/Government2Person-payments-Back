@@ -12,7 +12,7 @@ public class PaymentInstruction {
 
   @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
   private Long batchId;
-  private Long enrollmentId; // optional
+  private Long enrollmentId;
   private String beneficiaryUsername;
   private Double amount;
   private String currency;

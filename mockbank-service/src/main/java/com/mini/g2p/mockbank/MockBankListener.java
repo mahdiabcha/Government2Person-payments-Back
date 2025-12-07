@@ -12,7 +12,6 @@ public class MockBankListener {
   private final AmqpTemplate amqp;
   public MockBankListener(AmqpTemplate amqp){ this.amqp = amqp; }
 
-  // Must match payment-service message exactly (BigDecimal amount + username)
   public record PaymentInstructionMsg(
       Long instructionId,
       Long programId,
@@ -23,18 +22,16 @@ public class MockBankListener {
 
   @RabbitListener(queues = RabbitConfig.Q_INSTR)
   public void onInstruction(PaymentInstructionMsg in) throws InterruptedException {
-    // Simulate processing time
-    Thread.sleep(ThreadLocalRandom.current().nextInt(50, 200));
 
-    boolean ok = ThreadLocalRandom.current().nextDouble() < 0.85;
+    Thread.sleep(ThreadLocalRandom.current().nextInt(3000, 5000));
 
-    // SUCCESS → bankRef set, reason = null
-    // FAILED  → bankRef may still be set, reason populated
+    boolean ok = ThreadLocalRandom.current().nextDouble() < 0.50;
+
     var statusMsg = new PaymentStatusMsg(
         in.instructionId(),
         ok ? "SUCCESS" : "FAILED",
-        "BK-" + ThreadLocalRandom.current().nextInt(1_000_000),
-        ok ? null : "INSUFFICIENT_FUNDS"  // <-- publish reason on failure
+        "BANK-" + ThreadLocalRandom.current().nextInt(1_000_000),
+        ok ? null : "INSUFFICIENT_FUNDS" 
     );
 
     amqp.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.RK_STATUS, statusMsg);

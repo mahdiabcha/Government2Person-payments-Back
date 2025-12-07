@@ -47,7 +47,7 @@ public class AuthController {
     String role = (in.role == null ? "" : in.role.trim().toUpperCase(Locale.ROOT));
     if ("AGENT".equals(role) || "ADMIN".equals(role)) {
       roles.add("ADMIN");
-      roles.add("CITIZEN"); // keep citizen abilities too if your app expects it
+      roles.add("CITIZEN"); 
     } else {
       roles.add("CITIZEN");
     }

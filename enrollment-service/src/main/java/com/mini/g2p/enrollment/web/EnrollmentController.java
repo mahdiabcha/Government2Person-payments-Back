@@ -32,22 +32,23 @@ public class EnrollmentController {
   public EnrollmentController(EnrollmentRepository repo, EligibilityService eligibility,
                               @Qualifier("programClient") WebClient programClient,
                               @Qualifier("profileClient") WebClient profileClient,
-                              NotificationsClient notifications) {              // NEW
+                              NotificationsClient notifications) {             
     this.repo = repo;
     this.eligibility = eligibility;
     this.programClient = programClient;
     this.profileClient = profileClient;
-    this.notifications = notifications;                                       // NEW
+    this.notifications = notifications;                                    
   }
 
 
-  // ---- Helpers ----
+ ////helpers///
   private JsonNode fetchProgram(long programId, HttpHeaders headers) {
     return programClient.get().uri("/programs/{id}", programId)
         .headers(h -> forward(headers, h))
         .retrieve().bodyToMono(JsonNode.class).blockOptional()
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Program not found"));
   }
+
   private JsonNode fetchMyProfile(HttpHeaders headers) {
     return profileClient.get().uri("/profiles/me").headers(h -> forward(headers, h))
         .retrieve().bodyToMono(JsonNode.class).blockOptional()
@@ -59,6 +60,7 @@ public class EnrollmentController {
     }
   }
   private boolean nonEmpty(Object o){ return o!=null && !String.valueOf(o).isBlank(); }
+
 private boolean profileComplete(JsonNode p){
   boolean hasDob =
       (p.hasNonNull("birthDate")    && !String.valueOf(p.get("birthDate").asText("")).isBlank())
@@ -73,9 +75,8 @@ private boolean profileComplete(JsonNode p){
       && p.hasNonNull("kycVerified")
       && p.get("kycVerified").asBoolean(false);
 }
+/////helpers end ////
 
-
-  // ---------- Check eligibility ----------
   @GetMapping("/programs/{programId}/eligibility/check")
   public Map<String,Object> check(@RequestHeader HttpHeaders headers, @PathVariable long programId){
     JsonNode profile = fetchMyProfile(headers);
@@ -152,7 +153,6 @@ public List<Map<String,Object>> my(@RequestHeader HttpHeaders headers){
 }
 
 
-  // ---------- Beneficiaries (admin) ----------
 // ---------- Beneficiaries (admin) ----------
 @GetMapping("/programs/{programId}/beneficiaries")
 public List<BeneficiaryItem> beneficiaries(@RequestHeader HttpHeaders headers,

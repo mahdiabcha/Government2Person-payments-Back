@@ -51,7 +51,8 @@ public class PaymentController {
         .filter(Objects::nonNull).map(String::trim).filter(s -> !s.isBlank()).distinct().collect(Collectors.toList());
     if (bens.isEmpty()) return ResponseEntity.status(409).body(Map.of("error","no beneficiaries"));
 
-    var batch = new PaymentBatch(); batch.setProgramId(req.programId());
+    var batch = new PaymentBatch();
+    batch.setProgramId(req.programId());
     batches.save(batch);
     for (String u : bens) {
       var pi = new PaymentInstruction();
@@ -75,11 +76,11 @@ public class PaymentController {
     batches.save(b);
 
     instr.findByBatchId(id).forEach(pi -> {
-      BigDecimal amount = toBigDecimal(pi.getAmount()); // <- ensure BigDecimal for DTO
+      BigDecimal amount = toBigDecimal(pi.getAmount()); 
       var msg = new com.mini.g2p.payment.dto.PaymentInstructionMsg(
           pi.getId(),
           b.getProgramId(),
-          pi.getBeneficiaryUsername(), // <- username
+          pi.getBeneficiaryUsername(), 
           amount,
           pi.getCurrency()
       );
@@ -124,7 +125,8 @@ public class PaymentController {
     var approved = programClient.getApprovedEntitlements(cycleId);
     if (approved==null || approved.isEmpty()) return ResponseEntity.status(409).body(Map.of("error","no approved entitlements"));
 
-    var batch = new PaymentBatch(); batch.setProgramId(programId); batch.setCycleId(cycleId);
+    var batch = new PaymentBatch(); 
+    batch.setProgramId(programId); batch.setCycleId(cycleId);
     batches.save(batch);
 
     approved.forEach(e -> {
