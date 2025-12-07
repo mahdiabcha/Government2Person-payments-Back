@@ -2,9 +2,9 @@
 
 Ce repository contient une solution **microservices** pour la gestion des aides financières publiques **Government-to-Person (G2P)**.  
 Le système prend en charge le cycle complet :  
-**inscription → enrôlement → éligibilité → cycles → droits de paiement → lots → exécution bancaire → notifications**. :contentReference[oaicite:11]{index=11}
+**inscription → enrôlement → éligibilité → cycles → droits de paiement → lots → exécution bancaire → notifications**. 
 
-Comme pour le front, la solution fait suite à un PoC OpenG2P jugé trop lourd et difficile à maîtriser, d’où le choix d’une architecture interne plus claire et flexible. :contentReference[oaicite:12]{index=12}
+Comme pour le front, la solution fait suite à un PoC OpenG2P jugé trop lourd et difficile à maîtriser, d’où le choix d’une architecture interne plus claire et flexible. 
 
 ---
 
@@ -43,7 +43,7 @@ Comme pour le front, la solution fait suite à un PoC OpenG2P jugé trop lourd e
   Banque simulée pour tests/démo.
 
 - **notifications-service**  
-  Notifications liées aux enrôlements et paiements. :contentReference[oaicite:15]{index=15}
+  Notifications liées aux enrôlements et paiements. 
 
 ---
 
@@ -54,14 +54,14 @@ Comme pour le front, la solution fait suite à un PoC OpenG2P jugé trop lourd e
 2. Vérifie son éligibilité.
 3. Demande à s’enrôler à un programme.
 4. Suit le statut de sa demande.
-5. Reçoit paiements et notifications. :contentReference[oaicite:16]{index=16}
+5. Reçoit paiements et notifications.
 
 ### Administrateur
 1. Crée/active programmes et règles d’éligibilité.
 2. Gère les cycles d’aide.
 3. Approuve/rejette les enrôlements.
 4. Prépare et approuve les droits de paiement.
-5. Crée et dispatch les lots de paiement. :contentReference[oaicite:17]{index=17}
+5. Crée et dispatch les lots de paiement. 
 
 ---
 
@@ -69,11 +69,11 @@ Comme pour le front, la solution fait suite à un PoC OpenG2P jugé trop lourd e
 - **Sécurité** : mots de passe chiffrés + jetons (données financières sensibles).
 - **Performance** : traitements rapides.
 - **Maintenabilité & scalabilité** : clean code, services indépendants.
-- **Ergonomie globale du système** (via gateway + front). :contentReference[oaicite:18]{index=18}
+- **Ergonomie globale du système** (via gateway + front).
 
 ---
 
-## Stack (à confirmer)
+## Stack 
 - Java 17+
 - Spring Boot / Spring Cloud
 - Maven wrapper (`./mvnw`)
